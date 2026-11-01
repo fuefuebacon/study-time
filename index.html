@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>勉強タイマー</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:24px;background:#f4f6fa;text-align:center}
+button{font-size:24px;padding:20px 40px;margin:10px;border:0;border-radius:16px;color:#fff;background:#3b82f6}
+.play{background:#f97316}.gray{background:#888;font-size:16px;padding:10px 20px}
+.big{font-size:64px;margin:20px}
+input{font-size:24px;padding:10px;text-align:center;width:120px}
+</style></head><body><div id="app"></div>
+<script>
+const KEY='studyApp',BASE=120,TESTMIN=90,TESTDAYS=21;
+let S=JSON.parse(localStorage.getItem(KEY)||'{}');
+const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const app=document.getElementById('app');
+const fmt=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+function weekKey(){const x=new Date();x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return fmt(x)}
+function inTest(){
+  if(!S.tStart||!S.tEnd)return false;
+  const a=new Date(S.tStart+'T00:00:00');a.setDate(a.getDate()-TESTDAYS);
+  const b=new Date(S.tEnd+'T00:00:00');b.setDate(b.getDate()+1);
+  const n=new Date();return n>=a&&n<b}
+const limit=()=>inTest()?TESTMIN:S.limit;
+const rem=()=>limit()-S.used-(S.mode==='play'?(Date.now()-S.since)/60000:0);
+function mmss(ms){const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function go(m,min){S.mode=m;S.until=min?Date.now()+min*60000:0;S.since=Date.now();save();render()}
+function startPlay(){if(rem()<=0){alert('今週の遊び時間は終わりです');return}go('play',0)}
+function stopPlay(){S.used+=(Date.now()-S.since)/60000;go('',0)}
+function settings(){
+  if(prompt('親の暗証番号')!==S.pin){alert('違います');return}
+  const a=prompt('テスト初日(例 2026-12-08)',S.tStart||'');
+  const b=prompt('テスト最終日(例 2026-12-11)',S.tEnd||'');
+  if(a&&b){S.tStart=a;S.tEnd=b;save();render()}}
+function render(){
+  const m=S.mode||'';let h='';
+  if(m==='study'){const l=S.until-Date.now();
+    h=l>0?`<h1>勉強中</h1><div class=big>${mmss(l)}</div><button class=gray onclick="go('',0)">やめる</button>`
+    :`<h1>50分おつかれさま!</h1><button onclick="go('break',10)">10分休憩</button>`}
+  else if(m==='break'){const l=S.until-Date.now();
+    h=l>0?`<h1>休憩中(スマホは触らない)</h1><div class=big>${mmss(l)}</div>`
+    :`<h1>休憩おわり</h1><button onclick="go('study',50)">もう1セット</button><button class=gray onclick="go('',0)">終わる</button>`}
+  else if(m==='play'){const r=rem();
+    h=`<h1>遊び中</h1><div class=big style="color:${r>0?'#000':'red'}">${r>0?'残り '+Math.ceil(r)+'分':'時間切れ!'}</div><button class=play onclick="stopPlay()">遊びを終了</button>`}
+  else{const r=Math.max(0,Math.floor(rem()));
+    h=`<h1>何に使う?</h1><p>今週の遊び残り:<b>${r}分</b> / ${limit()}分${inTest()?'(テスト期間・固定)':''}</p>
+    <button onclick="go('study',50)">📚 勉強</button><button class=play onclick="startPlay()">🎮 遊び</button><br>
+    <button class=gray onclick="settings()">設定(親)</button>`}
+  app.innerHTML=h}
+function ask(){
+  S.mode='';
+  app.innerHTML=`<h1>先週のルールは守れましたか?</h1><p>親の暗証番号</p><input id=pin type=password inputmode=numeric maxlength=4><br>
+  <button onclick="answer(true)">守れた</button><button class=gray onclick="answer(false)">守れなかった</button>`}
+function answer(ok){
+  if(document.getElementById('pin').value!==S.pin){alert('暗証番号が違います');return}
+  S.limit=BASE+(ok?30:-30);S.used=0;S.week=weekKey();S.mode='';save();render()}
+while(!S.pin){const p=prompt('親の4桁の暗証番号を決めてください');if(p&&/^\d{4}$/.test(p)){S.pin=p;save()}}
+if(!S.week){S.week=weekKey();S.limit=BASE;S.used=0;S.mode='';save();render()}
+else if(S.week!==weekKey())ask();else render();
+setInterval(()=>{if(['study','break','play'].includes(S.mode||''))render()},1000);
+</script></body></html>
