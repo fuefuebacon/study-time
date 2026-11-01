@@ -3,59 +3,154 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>勉強タイマー</title>
 <style>
-body{font-family:-apple-system,sans-serif;margin:0;padding:24px;background:#f4f6fa;text-align:center}
-button{font-size:24px;padding:20px 40px;margin:10px;border:0;border-radius:16px;color:#fff;background:#3b82f6}
-.play{background:#f97316}.gray{background:#888;font-size:16px;padding:10px 20px}
-.big{font-size:64px;margin:20px}
-input{font-size:24px;padding:10px;text-align:center;width:120px}
+:root{--bg:#eef2f9;--card:#fff;--fg:#1f2937;--blue:#3b82f6;--orange:#f97316;--gray:#6b7280}
+*{box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:var(--bg);color:var(--fg);text-align:center;min-height:100vh;transition:background .6s,color .6s}
+body.dark{background:#05070d;color:#6b7280}
+h1{font-size:28px;margin:8px 0}
+.card{background:var(--card);border-radius:20px;padding:20px;margin:14px auto;max-width:640px;box-shadow:0 2px 8px #0001;text-align:left}
+body.dark .card{background:#0d1220;box-shadow:none}
+.c{text-align:center}
+button{font-size:22px;padding:18px 32px;margin:8px;border:0;border-radius:16px;color:#fff;background:var(--blue)}
+button.play{background:var(--orange)}
+button.gray{background:var(--gray);font-size:16px;padding:12px 20px}
+.big{font-size:64px;font-weight:700;margin:10px 0;text-align:center}
+.sub{color:var(--gray);font-size:15px;margin:6px 0;text-align:center}
+.barbg{height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden}
+.barfg{height:100%;background:var(--orange);transition:width .5s}
+input[type=text],input[type=password]{font-size:20px;padding:12px;width:100%;margin:6px 0;border:1px solid #cbd5e1;border-radius:12px}
+.todo{display:flex;align-items:center;font-size:20px;margin:10px 0}
+.todo input{width:26px;height:26px;margin-right:12px}
+.done{text-decoration:line-through;color:var(--gray)}
+.warn{background:#fff7ed;color:#c2410c;border-radius:12px;padding:10px;margin:10px 0;text-align:center;font-size:16px}
+.bars{display:flex;align-items:flex-end;justify-content:space-around;height:230px}
+.bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
+.fill{width:60%;background:var(--blue);border-radius:8px 8px 0 0;min-height:2px}
+.v{font-size:14px}.l{font-size:12px;color:var(--gray);margin-top:4px}
+.cd{background:#e0ecff;border-radius:20px;padding:16px;margin:0 auto 14px;max-width:640px;text-align:center}
+.cd b{font-size:44px;display:block;color:#1d4ed8}.cd.test b{color:#dc2626}.cd small{font-size:15px;color:#4b5563;display:block}
+body.dark .cd{background:#0d1220}
 </style></head><body><div id="app"></div>
 <script>
-const KEY='studyApp',BASE=120,TESTMIN=90,TESTDAYS=21;
-let S=JSON.parse(localStorage.getItem(KEY)||'{}');
+const KEY='studyApp',BASE=120,TESTMIN=90,TESTDAYS=21,STUDY=50,BREAK=10;
+let S=JSON.parse(localStorage.getItem(KEY)||'{}'),view='home';
+S.log=S.log||{};S.todo=S.todo||{};S.debt=S.debt||0;S.lastDebt=S.lastDebt||0;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
 const app=document.getElementById('app');
-const fmt=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+const pad=n=>String(n).padStart(2,'0');
+const fmt=x=>x.getFullYear()+'-'+pad(x.getMonth()+1)+'-'+pad(x.getDate());
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const days=['日','月','火','水','木','金','土'];
 function weekKey(){const x=new Date();x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return fmt(x)}
 function inTest(){
   if(!S.tStart||!S.tEnd)return false;
-  const a=new Date(S.tStart+'T00:00:00');a.setDate(a.getDate()-TESTDAYS);
-  const b=new Date(S.tEnd+'T00:00:00');b.setDate(b.getDate()+1);
+  const a=addDays(new Date(S.tStart+'T00:00:00'),-TESTDAYS);
+  const b=addDays(new Date(S.tEnd+'T00:00:00'),1);
   const n=new Date();return n>=a&&n<b}
 const limit=()=>inTest()?TESTMIN:S.limit;
 const rem=()=>limit()-S.used-(S.mode==='play'?(Date.now()-S.since)/60000:0);
-function mmss(ms){const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
-function go(m,min){S.mode=m;S.until=min?Date.now()+min*60000:0;S.since=Date.now();save();render()}
-function startPlay(){if(rem()<=0){alert('今週の遊び時間は終わりです');return}go('play',0)}
-function stopPlay(){S.used+=(Date.now()-S.since)/60000;go('',0)}
+function mmss(ms){const s=Math.max(0,Math.ceil(ms/1000));return pad(Math.floor(s/60))+':'+pad(s%60)}
+function credit(){
+  if(S.mode==='study'&&S.sStart){
+    const m=Math.min(STUDY,(Date.now()-S.sStart)/60000),k=fmt(new Date());
+    S.log[k]=(S.log[k]||0)+m}}
+function go(m,min){
+  credit();S.mode=m;S.until=min?Date.now()+min*60000:0;S.since=Date.now();
+  if(m==='study')S.sStart=Date.now();
+  save();view='home';render()}
+function startPlay(){
+  if(rem()<=0){alert('今週の遊び時間は終わりです。使い続けると、超えた分の2倍が来週から引かれます');return}
+  S.eff=limit();go('play',0)}
+function stopPlay(){S.used+=(Date.now()-S.since)/60000;S.eff=limit();go('',0)}
 function settings(){
   if(prompt('親の暗証番号')!==S.pin){alert('違います');return}
-  const a=prompt('テスト初日(例 2026-12-08)',S.tStart||'');
+  const a=prompt('テスト初日(例 2026-12-08)。空欄で削除',S.tStart||'');
+  if(a===null)return;
+  if(a===''){S.tStart=S.tEnd='';save();render();return}
   const b=prompt('テスト最終日(例 2026-12-11)',S.tEnd||'');
   if(a&&b){S.tStart=a;S.tEnd=b;save();render()}}
-function render(){
-  const m=S.mode||'';let h='';
+function tick(i){const k=fmt(new Date());S.todo[k][i].d=!S.todo[k][i].d;save();render()}
+function saveTodo(){
+  const a=[0,1,2].map(i=>document.getElementById('t'+i).value.trim());
+  if(a.some(x=>!x)){alert('3つ書こう');return}
+  S.todo[fmt(addDays(new Date(),1))]=a.map(t=>({t,d:false}));
+  save();view='home';render()}
+function show(v){view=v;render()}
+
+function countdown(){
+  if(!S.tStart||!S.tEnd)return `<div class=cd><small>設定(親)でテストの日付を入れてね</small></div>`;
+  const t0=new Date();t0.setHours(0,0,0,0);
+  const a=new Date(S.tStart+'T00:00:00'),b=new Date(S.tEnd+'T00:00:00');
+  const toStart=Math.round((a-t0)/86400000),toEnd=Math.round((b-t0)/86400000);
+  const lock=inTest()?'<small>🔒 テスト期間中(遊び1時間半固定)</small>':'';
+  if(toEnd<0)return `<div class=cd><b>テスト終了</b><small>おつかれさま!</small></div>`;
+  if(toStart<=0)return `<div class="cd test"><b>テスト中!</b><small>最終日まであと${toEnd}日</small>${lock}</div>`;
+  return `<div class="cd ${inTest()?'test':''}"><small>テストまで</small><b>あと${toStart}日</b>${lock}</div>`}
+
+function home(){
+  const m=S.mode||'';
   if(m==='study'){const l=S.until-Date.now();
-    h=l>0?`<h1>勉強中</h1><div class=big>${mmss(l)}</div><button class=gray onclick="go('',0)">やめる</button>`
-    :`<h1>50分おつかれさま!</h1><button onclick="go('break',10)">10分休憩</button>`}
-  else if(m==='break'){const l=S.until-Date.now();
-    h=l>0?`<h1>休憩中(スマホは触らない)</h1><div class=big>${mmss(l)}</div>`
-    :`<h1>休憩おわり</h1><button onclick="go('study',50)">もう1セット</button><button class=gray onclick="go('',0)">終わる</button>`}
-  else if(m==='play'){const r=rem();
-    h=`<h1>遊び中</h1><div class=big style="color:${r>0?'#000':'red'}">${r>0?'残り '+Math.ceil(r)+'分':'時間切れ!'}</div><button class=play onclick="stopPlay()">遊びを終了</button>`}
-  else{const r=Math.max(0,Math.floor(rem()));
-    h=`<h1>何に使う?</h1><p>今週の遊び残り:<b>${r}分</b> / ${limit()}分${inTest()?'(テスト期間・固定)':''}</p>
-    <button onclick="go('study',50)">📚 勉強</button><button class=play onclick="startPlay()">🎮 遊び</button><br>
-    <button class=gray onclick="settings()">設定(親)</button>`}
-  app.innerHTML=h}
-function ask(){
+    return l>0?`<div class=card><h1 class=c>📚 勉強中</h1><div class=big>${mmss(l)}</div><div class=c><button class=gray onclick="go('',0)">やめる</button></div></div>`
+    :`<div class=card><h1 class=c>50分おつかれさま!</h1><div class=c><button onclick="go('break',${BREAK})">10分休憩</button></div></div>`}
+  if(m==='break'){const l=S.until-Date.now();
+    return l>0?`<div class=card><h1 class=c>休憩中</h1><p class=sub>水を飲む・ストレッチ・目を休める。スマホは触らない</p><div class=big>${mmss(l)}</div></div>`
+    :`<div class=card><h1 class=c>休憩おわり</h1><div class=c><button onclick="go('study',${STUDY})">もう1セット</button><button class=gray onclick="go('',0)">終わる</button></div></div>`}
+  if(m==='play'){const r=rem();
+    return `<div class=card><h1 class=c>🎮 遊び中</h1><div class=big style="color:${r>0?'inherit':'red'}">${r>0?'残り '+Math.ceil(r)+'分':'時間切れ!'}</div>
+    ${r<=0?`<div class=warn>超過 ${Math.ceil(-r)}分 → 来週から ${Math.ceil(-r)*2}分 引かれます</div>`:''}
+    <div class=c><button class=play onclick="stopPlay()">遊びを終了</button></div></div>`}
+  const r=Math.max(0,Math.floor(rem())),L=limit(),pct=L?Math.round(r/L*100):0;
+  const today=S.todo[fmt(new Date())]||[],hasTm=S.todo[fmt(addDays(new Date(),1))];
+  let note='';
+  if(!inTest()&&S.lastDebt>0)note+=` / 先週の超過で${S.lastDebt}分引き`;
+  if(S.debt>0)note+=` / テスト後に${S.debt}分引き予定`;
+  return `<div class=card><h1 class=c>何に使う?</h1><p class=sub>今週の遊び残り</p><div class=big>${r}分</div>
+  <div class=barbg><div class=barfg style="width:${pct}%"></div></div>
+  <p class=sub>上限 ${L}分${inTest()?'(テスト期間・固定)':''}${note}</p></div>
+  <div class=c><button onclick="go('study',${STUDY})">📚 勉強</button><button class=play onclick="startPlay()">🎮 遊び</button></div>
+  <div class=card><b>今日やること</b>${today.length?today.map((t,i)=>`<label class=todo><input type=checkbox ${t.d?'checked':''} onchange="tick(${i})"><span class="${t.d?'done':''}">${t.t}</span></label>`).join(''):'<p class=sub>まだ書いていません</p>'}</div>
+  ${new Date().getHours()>=20&&!hasTm?'<div class=warn>寝る前に「明日やること」を3つ書こう</div>':''}
+  <div class=c><button class=gray onclick="show('todo')">📝 明日やること</button><button class=gray onclick="show('graph')">📊 勉強の記録</button><button class=gray onclick="settings()">⚙ 設定(親)</button></div>`}
+
+function todoView(){
+  const k=fmt(addDays(new Date(),1)),cur=(S.todo[k]||[]).map(x=>x.t);
+  return `<div class=card><h1 class=c>明日やること</h1><p class=sub>3つ書こう</p>
+  ${[0,1,2].map(i=>`<input type=text id=t${i} placeholder="${i+1}つ目" value="${(cur[i]||'').replace(/"/g,'&quot;')}">`).join('')}
+  <div class=c><button onclick="saveTodo()">保存</button><button class=gray onclick="show('home')">戻る</button></div></div>`}
+
+function graphView(){
+  const arr=[];let tot=0,mx=60;
+  for(let i=6;i>=0;i--){const d=addDays(new Date(),-i),m=Math.round(S.log[fmt(d)]||0);arr.push([d,m]);tot+=m;mx=Math.max(mx,m)}
+  const bars=arr.map(([d,m])=>`<div class=bar><div class=v>${m}</div><div class=fill style="height:${m/mx*160}px"></div><div class=l>${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})</div></div>`).join('');
+  return `<div class=card><h1 class=c>勉強の記録</h1><p class=sub>直近7日(分)</p><div class=bars>${bars}</div>
+  <p class=sub>合計 ${Math.floor(tot/60)}時間${tot%60}分 / 1日平均 ${Math.round(tot/7)}分</p>
+  <div class=c><button class=gray onclick="show('home')">戻る</button></div></div>`}
+
+function askView(){
+  if(S.mode==='play')S.used+=(Date.now()-S.since)/60000;
   S.mode='';
-  app.innerHTML=`<h1>先週のルールは守れましたか?</h1><p>親の暗証番号</p><input id=pin type=password inputmode=numeric maxlength=4><br>
-  <button onclick="answer(true)">守れた</button><button class=gray onclick="answer(false)">守れなかった</button>`}
+  const over=Math.max(0,Math.round(S.used-(S.eff||S.limit)));
+  return `<div class=card><h1 class=c>先週のルールは守れましたか?</h1>
+  ${over>0?`<div class=warn>先週は${over}分超過 → ${over*2}分が引かれます</div>`:''}
+  <p class=sub>親の暗証番号</p><input type=password id=pin inputmode=numeric maxlength=4>
+  <div class=c><button onclick="answer(true)">守れた(+30分)</button><button class=gray onclick="answer(false)">守れなかった(−30分)</button></div></div>`}
+
 function answer(ok){
   if(document.getElementById('pin').value!==S.pin){alert('暗証番号が違います');return}
-  S.limit=BASE+(ok?30:-30);S.used=0;S.week=weekKey();S.mode='';save();render()}
+  const over=Math.max(0,S.used-(S.eff||S.limit));
+  S.debt+=Math.round(over*2);
+  const base=BASE+(ok?30:-30);
+  if(!inTest()){S.limit=Math.max(0,base-S.debt);S.lastDebt=S.debt;S.debt=0}
+  else{S.limit=base;S.lastDebt=0}
+  S.week=weekKey();S.used=0;S.mode='';save();view='home';render()}
+
+function render(){
+  document.body.classList.toggle('dark',S.mode==='break'&&view==='home');
+  app.innerHTML=countdown()+(view==='ask'?askView():view==='todo'?todoView():view==='graph'?graphView():home())}
+
 while(!S.pin){const p=prompt('親の4桁の暗証番号を決めてください');if(p&&/^\d{4}$/.test(p)){S.pin=p;save()}}
-if(!S.week){S.week=weekKey();S.limit=BASE;S.used=0;S.mode='';save();render()}
-else if(S.week!==weekKey())ask();else render();
-setInterval(()=>{if(['study','break','play'].includes(S.mode||''))render()},1000);
+if(!S.week){S.week=weekKey();S.limit=BASE;S.used=0;S.mode='';save()}
+else if(S.week!==weekKey())view='ask';
+render();
+setInterval(()=>{if(view==='home'&&['study','break','play'].includes(S.mode||''))render()},1000);
 </script></body></html>
